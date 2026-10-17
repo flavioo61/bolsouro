@@ -1,0 +1,32 @@
+name: Build iOS
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - name: Leitor de PDF local (funciona offline)
+        run: |
+          npm install pdfjs-dist@3.11.174 --no-save
+          cp node_modules/pdfjs-dist/build/pdf.min.js www/pdf.min.js
+          cp node_modules/pdfjs-dist/build/pdf.worker.min.js www/pdf.worker.min.js
+          sed -i '' "s#https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js#pdf.min.js#" www/index.html
+          grep -c "const PU='pdf.min.js'" www/index.html
+      - run: npx cap add ios
+      - run: npx @capacitor/assets generate --ios || true
+      - run: npx cap sync ios
+      - name: Compilar sem assinatura
+        run: |
+          cd ios/App
+          if [ -d App.xcworkspace ]; then T="-workspace App.xcworkspace"; else T="-project App.xcodeproj"; fi
+          xcodebuild $T -scheme App -configuration Release -sdk iphoneos -archivePath "$PWD/build/App.xcarchive" archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+          mkdir -p Payload && cp -R build/App.xcarchive/Products/Applications/App.app Payload/
+          zip -qr Bolsouro.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Bolsouro-ipa
+          path: ios/App/Bolsouro.ipa
